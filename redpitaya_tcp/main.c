@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define THR 100
+#define THR 1000
 #define CRSIZE 100
 #define WVSIZE 200
 #define RDSIZE 16414
@@ -69,6 +69,11 @@ int main(int argc, char * argv[]) {
 
 	// Handle interruption of DAQ program
 	if (signal (SIGINT, &SignalHandler) == SIG_ERR) {
+		PRINT_STD_LIBERROR("signal");
+		CleanExit(EXIT_FAILURE);
+	}
+
+	if (signal (SIGPIPE, &SignalHandler) == SIG_ERR) {
 		PRINT_STD_LIBERROR("signal");
 		CleanExit(EXIT_FAILURE);
 	}

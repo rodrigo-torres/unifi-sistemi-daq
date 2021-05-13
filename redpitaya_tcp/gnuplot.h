@@ -15,6 +15,10 @@
  *   License along with this program.                                       *
  ***************************************************************************/
 
+//! \file gnuplot.h
+//! \brief
+//!
+
 #ifndef DAQ_SETUP_H
 #define DAQ_SETUP_H
 
@@ -24,14 +28,42 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define GNUPLOT_TITLE	"Test"
-#define GNUPLOT_X_LABEL "Sample Point"
-#define GNUPLOT_Y_LABEL "ADC Bin"
+enum GNUPlot_Flags {
+	kNoMirror,
+	kGrid,
+	kLogX,
+	kLogY
+};
 
-static FILE * GNUPlot_Configure();
+typedef struct {
+	char const * title;
+	char const * xlabel;
+	char const * ylabel;
+	char const * style;
+	char const * line_color;
+	int flags;
+} GNUPlot_ParamsTypedef;
+
+
+//! \brief
+//!
+//! \param params
+//!
+//! \return A pointer to the gnuplot pipe handle if successfull, NULL otherwise
+static FILE * GNUPlot_Configure(GNUPlot_ParamsTypedef * params);
+
+//! \brief
+//!
+//! \param plot
+//! \param data
+//! \param points
 static void GNUPlot_Plot(FILE * plot, int16_t const * data, int const points);
 
-static FILE * GNUPlot_Configure() {
+static FILE * GNUPlot_Configure(GNUPlot_ParamsTypedef * params) {
+	if(params == NULL) {
+		return NULL;
+	}
+
 	FILE * fgplot = popen("gnuplot -persist","w");
 	if (fgplot == NULL) {
 		PRINT_STD_LIBERROR("popen");
@@ -40,13 +72,31 @@ static FILE * GNUPlot_Configure() {
 
 	// Aggiunge uno spazio, perché a volte perde il primo carattere
 	fprintf(fgplot," set term x11 0 \n");
-	fprintf(fgplot, "set title \"%s\"\n", GNUPLOT_TITLE);
-	fprintf(fgplot," set xlabel \"%s\"\n", GNUPLOT_X_LABEL);
-	fprintf(fgplot," set ylabel \"%s\"\n", GNUPLOT_Y_LABEL);
-	fprintf(fgplot," set xtics nomirror\n");
-	fprintf(fgplot," set ytics nomirror\n");
-	fprintf(fgplot," set style data linesp\n");
-	fprintf(fgplot," set grid\n");
+	if (params->title) {
+		fprintf(fgplot, "set title \"%s\"\n", params->title);
+	}
+	if (params->xlabel) {
+		fprintf(fgplot," set xlabel \"%s\"\n", params->xlabel);
+	}
+	if (params->ylabel) {
+		fprintf(fgplot," set ylabel \"%s\"\n", params->ylabel);
+	}
+	if (params->style) {
+		fprintf(fgplot," set style data %s\n", params->style);
+	}
+	if (params->flags & kNoMirror) {
+		fprintf(fgplot," set xtics nomirror\n");
+		fprintf(fgplot," set ytics nomirror\n");
+	}
+	if (params->flags & kGrid) {
+		fprintf(fgplot," set grid\n");
+	}
+	if (params->flags & kLogX) {
+		fprintf(fgplot," set logscale x\n");
+	}
+	if (params->flags & kLogY) {
+		fprintf(fgplot," set logscale y\n");
+	}
 
 	return fgplot;
 }
