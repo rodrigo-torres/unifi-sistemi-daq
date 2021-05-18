@@ -1,3 +1,7 @@
+# Configuration file
+*.cproject
+*language.settings.xml
+
 # Prerequisites
 *.d
 
