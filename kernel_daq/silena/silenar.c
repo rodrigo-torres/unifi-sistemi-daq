@@ -8,7 +8,7 @@
 
 MODULE_LICENSE("GPL");
 
-//! \file emptyr.c
+//! \file silenar.c
 //! \brief
 
 //! \def NAME
@@ -24,7 +24,7 @@ MODULE_LICENSE("GPL");
 //! \brief Enables debug messages to the kernel log through printk()
 #define MOD_ENABLE_DEBUG 1
 //! \def HERE
-//! \brief Substitutes the module name and the calling function as ARGUMENTS
+//! \brief Substitutes the module name and the calling function as ARGUMENTS   
 //! to a call to printk. Do NOT use on its own
 #define HERE NAME,(char *)__FUNCTION__
 //! \def DEBUG_ALERT
@@ -282,37 +282,56 @@ static ssize_t read
   write_idx = atomic_read(&(ddata->write_idx));
   int transfer = (write_idx + SIZE - read_idx) % SIZE;
   
+  // Should we not decrement  transfer by one here?
   if ( transfer > request) {
     transfer = request;
+    // transfer = request - 1;
   }
   
   transfer_bytes = transfer * EVENTS_SIZE;
   
-  // 2 casi da gestire
-  // primo
-  // if read_idx < write_idx
-  // 1 solo copy to user
-  
-  // if read_idx > write_idx
-  // 2 copy to user
-  
-  // status = copy_to_user(buff,line,send);
-  // Nel caso in cui ci sia un copy to user error
-  // un goto: e poi un printk
-  
-  // Aggionare il read_idx locale
-  
-  
-//  if (ddata->fHang) && (RDY = 0) {
-//    read_evvent()
-//    fHang-> 0;
-//  }
-  
-  
+  if (read_idx < write_idx) {
+    // Bytes transfer doesn't wrap around the circular buffer, only one call
+    // to copy_to_user is needed
+    retval = copy_to_user(buff, events + read_idx, transfer_bytes);
+    read_idx += (transfer - (retval / EVENTS_SIZE));
+    if (retval) {
+      goto copy_error;
+    }
+  }
+  else { // read_idx > write_idx
+    // Bytes transfer wraps around the circular buffer, first transfer the bytes
+    // up to the upper bound of the memory allocated to the buffer
+    int second_transfer = transfer_bytes - (SIZE - read_idx) * EVENTS_SIZE;
+    retval = copy_to_user(buff, events + read_idx, transfer_bytes - second_transfer);
+//    read_idx += ((transfer_bytes - second_transfer - retval) / EVENTS_SIZE);
+//    if (read_idx == SIZE) {
+//      read_idx = 0;
+//    }
+    if (retval) {
+      goto copy_error;
+    }
+    // Then copy the remaining bytes starting from the head of the buffer
+    retval = copy_to_user(buff, events, second_transfer);
+//    read_idx += ((second_transfer - retval) / EVENTS_SIZE);
+    if (retval) {
+      goto copy_error;
+    }  
+  }
+  // The transfer was complete, update the local read_idx variable
+  read_idx = (read_idx + transfer) % SIZE;
+  // And the global variable
+  atomic_set(&(ddata->read_idx), read_idx);
+   
+  if ( (ddata->fHang) && (gpio_get_value(GPIO_RDY) == 0) ) {
+    read_evvent()
+    ddata->fHang = 0;
+  }
+    
   return transfer_bytes;
   
   copy_error:
-    DEBUG_ALERT("");
+    DEBUG_ALERT("%d bytes couldn't be transferred to user", retval);
     return -1;
 }
 
