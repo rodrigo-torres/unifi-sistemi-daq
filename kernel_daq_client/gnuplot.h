@@ -16,7 +16,8 @@
  ***************************************************************************/
 
 //! \file gnuplot.h
-//! \brief
+//! \brief Function declarations and definitions to set up a pipe to Gnuplot to
+//! plot histograms
 //!
 
 #ifndef DAQ_SETUP_H
@@ -82,9 +83,10 @@ static FILE * GNUPlot_Configure(GNUPlot_ParamsTypedef * params) {
 	if (params->ylabel) {
 		fprintf(fgplot," set ylabel \"%s\"\n", params->ylabel);
 	}
-//	if (params->style) {
-//		fprintf(fgplot," set style data %s\n", params->style);
-//	}
+	if (params->style) {
+		fprintf(fgplot," set style data %s\n", params->style);
+	}
+    fprintf(fgplot, " set style data steps\n");
 	if (params->flags & kNoMirror) {
 		fprintf(fgplot," set xtics nomirror\n");
 		fprintf(fgplot," set ytics nomirror\n");
@@ -118,6 +120,3 @@ static void GNUPlot_Plot(FILE * plot, int16_t const * data, int const points) {
 }
 
 #endif // daq_setup.h
-
-
-

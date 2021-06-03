@@ -16,7 +16,7 @@
  *   You should have received a copy of the GNU Lesser General Public       *
  *   License along with this program.                                       *
  ***************************************************************************/
-
+                                                                                
 /*! \file main.c
     \brief A Documented file.
 
@@ -84,7 +84,7 @@ int main(int argc, char * argv[]) {
 	gplot_config.title  = "Silena DAQ";
 	gplot_config.xlabel = "Channel";
 	gplot_config.ylabel = "Counts";
-	gplot_config.style  = "lw 2 lc black";
+	//gplot_config.style  = "lc black";
 	gplot_config.flags  = kNoMirror;	
 	
 	gnuplot = GNUPlot_Configure(&gplot_config);
@@ -94,7 +94,7 @@ int main(int argc, char * argv[]) {
 	}
 	
 	// Open the char device
-	fd = open(DEV_PATH, O_RDONLY, 0);
+	fd = open(DEV_PATH, O_RDWR, 0);
 	if (fd == -1) {
 	  PRINT_DBGMSG("Could not open the char device!");
 	  CleanExit(EXIT_FAILURE);	  
@@ -102,6 +102,15 @@ int main(int argc, char * argv[]) {
 	
 	memset(histo, 0, sizeof (histo));
 	serviced = 0;
+
+	// Start the acquisition
+    retval = write(fd, "S", 1);
+    if (retval != 1) {
+      perror("");
+	  PRINT_DBGMSG("Could not start acquisition.");
+	  CleanExit(EXIT_FAILURE);	
+    }
+
 	
 	while (daq_go) {
 	  // Read one event at a time
@@ -120,6 +129,14 @@ int main(int argc, char * argv[]) {
 	    GNUPlot_Plot(gnuplot, histo, HIST_SIZE);		  
 	  }	
 	}
+
+	// Stop the acquisition
+    retval = write(fd, "E", 1);
+    if (retval != 1) {
+	  PRINT_DBGMSG("Could not stop the acquisition.");
+	  CleanExit(EXIT_FAILURE);	
+    }
+
 
 	PRINT_DBGMSG("Stopping acquisition.");
 	CleanExit(EXIT_SUCCESS);
@@ -144,6 +161,3 @@ void CleanExit(int code) {
 	fflush(stderr);
 	exit(code);
 }
-
-
-

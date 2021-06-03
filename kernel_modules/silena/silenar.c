@@ -3,8 +3,10 @@
 #include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/gpio.h>
+#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/uaccess.h>
+//schead
 
 MODULE_LICENSE("GPL");
 
@@ -36,13 +38,15 @@ MODULE_LICENSE("GPL");
 if (debug) \
   printk(KERN_ALERT "%s: %s -" msg ,HERE, ##__VA_ARGS__)
 
-#define EVENT_SIZE sizeof (struct event)
+#define EVENTS_SIZE sizeof (struct event)
 
 #define SIZE 10000
 #define WRITE_BUF 32
 
 #define GPIO_RUN 23
 #define GPIO_ENB 24
+#define GPIO_RDY 26
+#define GPIO_ACK 27
 
 
 //! \brief struct event defines the data for each SILENA ADC event
@@ -108,7 +112,7 @@ DECLARE_WAIT_QUEUE_HEAD(queue);
 
 //! \brief Exit function of the kernel module
 //!
-static void emptyr_exit(void) {
+static void silenar_exit(void) {
   DEBUG_ALERT("Exiting the module.");
    // 1. Rimuove FILE in /dev
    if (dev_device) {
@@ -132,15 +136,17 @@ static void emptyr_exit(void) {
 //!
 //! \param ddata is a pointer to the char device private data
 int read_event(struct driver_data * ddata) {
-  struct timeval tim;   // Timestamp of the event
-  int write_idx, val;
-
-  do_gettimeofday(&tim); // Wrapper for gettimeofday in kernel space
-
-  write_idx = atomic_read(&(data->write_idx));
+  struct timespec64 tim;   // Timestamp of the event
+  int write_idx, val, j;
   
-  if ( ((write_idx + 1) % SIZE) == atomic_read(&(data->read_idx)) ) {
-    DEBUG_ALERT("Strange things are happening");
+  ktime_get_real_ts64(&tim);	// New method for gettimeofday
+
+  //do_gettimeofday(&tim); // Wrapper for gettimeofday in kernel space
+
+  write_idx = atomic_read(&(ddata->write_idx));
+  
+  if ( ((write_idx + 1) % SIZE) == atomic_read(&(ddata->read_idx)) ) {
+    //DEBUG_ALERT("Strange things are happening");
     ddata->fHang = 1;
     return -1;
   }
@@ -151,14 +157,14 @@ int read_event(struct driver_data * ddata) {
   }
   val ^= 0x1FFF;
   
-  gpio_set_value(ACK, 1);
+  gpio_set_value(GPIO_ACK, 1);
   ddata->events[write_idx].tv_sec   = (int32_t)(tim.tv_sec);
-  ddata->events[write_idx].tv_usec  = (int32_t)(tim.tv_usec);
+  ddata->events[write_idx].tv_usec  = (int32_t)(tim.tv_nsec / 1000);
   ddata->events[write_idx].value    = val;
   write_idx = (write_idx + 1) % SIZE;
-  atomic_set(&(data->write_idx), write_idx);
+  atomic_set(&(ddata->write_idx), write_idx);
   
-  gpio_set_value(ACK, 0);
+  gpio_set_value(GPIO_ACK, 0);
   return 0;
 }
 
@@ -198,16 +204,17 @@ irqreturn_t irq_service (int irq, void * arg) {
 static int open (struct inode * node, struct file * filep) {
 //  MAJOR(node->i_rdev)
 //  MINOR(node->i_rdev)
-  DEBUG_ALERT("Opened the file.");
-  int status;
   static struct driver_data ddata;
+  int status;
   
-  filp->private_data = &ddata;
+  DEBUG_ALERT("Opened the file.");
+  
+  filep->private_data = &ddata;
   atomic_set(&(ddata.write_idx), 0);
   atomic_set(&(ddata.read_idx), 0);
   
   // Setup GPIO hardware
-  status = gpio_request_array(gpios, ARRAY_SIZE(gpios);
+  status = gpio_request_array(gpios, ARRAY_SIZE(gpios));
   if (status) {
     // Gestione dell'errore
     DEBUG_ALERT("Unable to request GPIOs");
@@ -215,7 +222,7 @@ static int open (struct inode * node, struct file * filep) {
   }
   
   gpio_direction_input(GPIO_RDY);
-  ddata.rdyirq = gpio_to_irq(RDY); // Il identificatore del interrupt
+  ddata.rdyirq = gpio_to_irq(GPIO_RDY); // Il identificatore del interrupt
   ddata.fHang = 0;
   ddata.fDone = 1;
   
@@ -237,8 +244,8 @@ static int open (struct inode * node, struct file * filep) {
 //! \param node
 //! \param filep
 static int close (struct inode * node, struct file * filp) {
-  DEBUG_ALERT("Closed the file.");
   struct driver_data * ddata = filp->private_data;
+  DEBUG_ALERT("Closed the file.");
   
   gpio_set_value(GPIO_RUN,0);
   gpio_set_value(GPIO_ENB,0);
@@ -262,9 +269,9 @@ static ssize_t read
 (struct file * filp, char * buff, size_t count, loff_t *ppos) {
   struct driver_data * ddata = filp->private_data;
   struct event * events = ddata->events;
-  int read_idx, write_idx, retval;
+  int read_idx, write_idx, transfer, transfer_bytes, retval;
   
-  int request = count / EVENT_SIZE;
+  int request = count / EVENTS_SIZE;
   if (request == 0) {
     DEBUG_ALERT("Read request rejected, consult the documentation.");
     return -1;
@@ -280,7 +287,7 @@ static ssize_t read
     }
   }
   write_idx = atomic_read(&(ddata->write_idx));
-  int transfer = (write_idx + SIZE - read_idx) % SIZE;
+  transfer = (write_idx + SIZE - read_idx) % SIZE;
   
   // Should we not decrement  transfer by one here?
   if ( transfer > request) {
@@ -290,11 +297,11 @@ static ssize_t read
   
   transfer_bytes = transfer * EVENTS_SIZE;
   
-  if (read_idx < write_idx) {
+  if (read_idx + transfer <= SIZE) {
     // Bytes transfer doesn't wrap around the circular buffer, only one call
     // to copy_to_user is needed
     retval = copy_to_user(buff, events + read_idx, transfer_bytes);
-    read_idx += (transfer - (retval / EVENTS_SIZE));
+    //read_idx += (transfer - (retval / EVENTS_SIZE));
     if (retval) {
       goto copy_error;
     }
@@ -324,7 +331,7 @@ static ssize_t read
   atomic_set(&(ddata->read_idx), read_idx);
    
   if ( (ddata->fHang) && (gpio_get_value(GPIO_RDY) == 0) ) {
-    read_evvent()
+    read_event(ddata);
     ddata->fHang = 0;
   }
     
@@ -343,7 +350,26 @@ static ssize_t read
 static ssize_t write 
 (struct file * filp, char const * user_buff, size_t count, loff_t *ppos) {
   // Vogliamo leggere dati, non ci importa scrivere dati
-  DEBUG_ALERT("request to write %u bytes", count);
+  if (user_buff == NULL) {
+    return count;
+  }
+
+  switch (user_buff[0]) {
+  case 'S': // Start the acquisition
+    gpio_set_value(GPIO_ENB, 1);
+    gpio_set_value(GPIO_RUN, 1);
+    DEBUG_ALERT("Starting the acquisition.");
+    break;
+  case 'E': // End the acquisition
+    gpio_set_value(GPIO_RUN, 0);
+    gpio_set_value(GPIO_ENB, 0);
+    DEBUG_ALERT("Stopping the acquisition.");
+    break;
+  default:
+    DEBUG_ALERT("Unrecognized write command.");
+    break;
+  }
+
   return count;
 }
 
@@ -357,8 +383,9 @@ static struct file_operations fops = {
 
 //! \brief Entry function of the kernel module
 //!
-static int emptyr_init(void) {
+static int silenar_init(void) {
   int status;
+  
   
   // 1. Allocare le risorse per un char device
   status = alloc_chrdev_region (&device, BASE_MINOR, DEV_NUM, NAME);
@@ -366,12 +393,10 @@ static int emptyr_init(void) {
     device = 0;
     goto failure;
   }
-  DEBUG_ALERT("alloc_chrdev_region success.");
   
   // 2. Creazione della struttura cdev
   cdev_init (&cdev, &fops);
   cdev.owner = THIS_MODULE;
-  DEBUG_ALERT("cdev_init success.");
   
   // 3. Aggiunta al sistema di cdev
   status  = cdev_add (&cdev, device, DEV_NUM);
@@ -379,7 +404,6 @@ static int emptyr_init(void) {
     goto failure;
   }
   cdev_flag = 1;
-  DEBUG_ALERT("cdev_add success.");
   
   // 4. Creazione della classe di device (unica)
   dev_class = class_create(THIS_MODULE, NAME);
@@ -388,8 +412,6 @@ static int emptyr_init(void) {
     dev_class = NULL;
     goto failure;
   }
-  DEBUG_ALERT("class_create success.");
-  
   // 5. Creazione di FILE in /dev
   dev_device = device_create(dev_class, NULL, device, NULL, NAME);
   if (IS_ERR(dev_device)) {
@@ -397,17 +419,16 @@ static int emptyr_init(void) {
     dev_device = NULL;
     goto failure;
   }
-  DEBUG_ALERT("device_create success.");
   
   DEBUG_ALERT("All's well that ends well.");
   return 0;
   
   failure:
     DEBUG_ALERT("These violent delights have violent ends");
-    emptyr_exit();
+    silenar_exit();
     return status;
 }
 
 
-module_init(emptyr_init);
-module_exit(emptyr_exit);
+module_init(silenar_init);
+module_exit(silenar_exit);
