@@ -1,9 +1,9 @@
 CC = gcc
-CFLAGS = -I.
+CFLAGS = -DTEST_CLIENT -I. -lzmq
 
 DEPS = gnuplot.h utility.h
 
-TARGET = kdaq_client
+TARGET = zmq_client 
 
 $(TARGET) : main.c $(DEPS)
 	$(CC) -o $@ $< $(CFLAGS)

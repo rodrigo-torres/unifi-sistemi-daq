@@ -39,7 +39,12 @@
 #include <string.h>
 
 #define HIST_SIZE 8192
+
+#ifdef TEST_SERVER
+#define DEV_PATH "text.txt"
+#else
 #define DEV_PATH "/dev/silenar"
+#endif
 #define BUF_SIZE 100
 
 //! \brief struct event defines the data for each SILENA ADC event
@@ -74,7 +79,6 @@ void CleanExit (int code);
 
 int main(int argc, char * argv[]) {
 	struct event event;
-	int16_t histo [HIST_SIZE];
 	int retval;
 
 	UNUSED(argc);
@@ -89,7 +93,7 @@ int main(int argc, char * argv[]) {
 	// Open the char device
 	fd = open(DEV_PATH, O_RDWR, 0);
 	if (fd == -1) {
-	  PRINT_DBGMSG("Could not open the char device!");
+	  PRINT_STD_LIBERROR("open");
 	  CleanExit(EXIT_FAILURE);	  
 	}
 	
@@ -97,47 +101,50 @@ int main(int argc, char * argv[]) {
 	context   = zmq_ctx_new();
 	responder = zmq_socket(context, ZMQ_REP);
 	
-	if ( zmq_bind(responder, "tcp://*;5555") ) {
-	  DEBUG_ALERT("Could not bind ZMQ socket.");
+	if ( zmq_bind(responder, "tcp://*:5555") ) {
+	  PRINT_STD_LIBERROR("zmq_bind");
 	  CleanExit(EXIT_FAILURE);
-	}	
-	
-	
-	memset(histo, 0, sizeof (histo));
+	}
+
+	PRINT_DBGMSG("Server started.");
 	
 	while (daq_go) {
 	  // Wait for a connection
 	  retval = zmq_recv(responder, buffer, BUF_SIZE - 1, 0);
 	  if (retval == -1) {
-	    DEBUG_ALERT(strerror(errno));
+	    PRINT_STD_LIBERROR("zmq_recv");
 	    CleanExit(EXIT_FAILURE);
 	  }
 	  buffer[retval] = '\0';
+		printf("received: %s\n", buffer);
 	  
 	  // Process the command with syntax: <COMMAND_ID> <ARG>
 	  // COMMAND_ID shall be one single capital ASCII letter
-	  // ARG depends on the COMMAND_ID and shall be a number, wehre appropriate
+	  // ARG depends on the COMMAND_ID and shall be a number, where appropriate
 	  switch(buffer[0]) {
 	  case 'S': // Start the acquisition 
       retval = write(fd, "S", 1);
       if (retval != 1) {
-	      PRINT_DBGMSG("Could not start acquisition.");
+	      PRINT_STD_LIBERROR("write");
 	      // Warn the client
 	      zmq_send(responder, "ERR 1", 5, 0);
       }
       else {
-        running = 1;      
+        running = 1;
+	      zmq_send(responder, "OK", 2, 0);
+     
       }
       break;	  
 	  case 'E': // Stop the acquisition 
       retval = write(fd, "S", 1);
       if (retval != 1) {
-	      PRINT_DBGMSG("Could not stop acquisition.");
+	      PRINT_STD_LIBERROR("write");
 	      // Warn the client
 	      zmq_send(responder, "ERR 2", 5, 0);
       }
       else {
-        running = 0;      
+        running = 0; 
+	      zmq_send(responder, "OK", 2, 0);     
       }
       break;	  
 	  case 'R': // Receive data
@@ -149,9 +156,8 @@ int main(int argc, char * argv[]) {
 	    // Read one event at a time
 	    retval = read(fd, &event, sizeof (struct event));
 	    if (retval != sizeof (struct event) || retval == -1) {	   
-	      PRINT_DBGMSG("Error in read operation.");
-	      zmq_send(responder, "ERR 4", 5, 0);
-	      
+	      PRINT_STD_LIBERROR("read");
+	      zmq_send(responder, "ERR 4", 5, 0);     
 	    }
 	    else {
 	      sprintf(buffer, "OK ");
@@ -169,10 +175,11 @@ int main(int argc, char * argv[]) {
 	if (running) {
     retval = write(fd, "E", 1);
     if (retval != 1) {
-	    PRINT_DBGMSG("Could not stop the acquisition.");
+	    PRINT_STD_LIBERROR("write");
 	    CleanExit(EXIT_FAILURE);	
     }
 	}
+
 	CleanExit(EXIT_SUCCESS);
 	return 0; // Never executed
 };
@@ -187,13 +194,10 @@ void CleanExit(int code) {
 	if (fd != -1) {
 		close(fd);
 	}
-	if (gnuplot != NULL) {
-		fclose(gnuplot);
-	}
 	zmq_close(responder);
 	zmq_ctx_destroy(context);
-	PRINT_DBGMSG("Garbage has been collected");
 	fflush(stdout);
 	fflush(stderr);
+	PRINT_DBGMSG("Garbage has been collected");
 	exit(code);
 }

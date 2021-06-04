@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -I. -lzmq
+CFLAGS = -DTEST_SERVER -I. -lzmq
 
 DEPS = utility.h
 
