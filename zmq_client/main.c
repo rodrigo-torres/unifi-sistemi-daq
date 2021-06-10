@@ -143,7 +143,7 @@ int main(int argc, char * argv[]) {
 		CleanExit(EXIT_FAILURE);
 	}
 
-  serviced = 0
+  serviced = 0;
 	while (daq_go) {
 	  // Request data one event at a time
 	  retval = zmq_txrx("R", buffer, BUF_SIZE);
@@ -157,7 +157,7 @@ int main(int argc, char * argv[]) {
 		getc(stdin);
 		#else
 		// Populate the histogram
-		memcpy(event, buffer, sizeof (struct event));
+		memcpy(&event, buffer, sizeof (struct event));
 		
 		if ( 0 <= event.value && event.value < HIST_SIZE) {
 	    ++histo[event.value];

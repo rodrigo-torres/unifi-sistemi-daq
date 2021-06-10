@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -DTEST_CLIENT -I. -lzmq
+#CFLAGS = -DTEST_CLIENT -I. -lzmq
+CFLAGS = -I. -lzmq
 
 DEPS = gnuplot.h utility.h
 
