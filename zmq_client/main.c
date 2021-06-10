@@ -97,7 +97,7 @@ void InterpretServerError(char const * msg);
 int main(int argc, char * argv[]) {
 	struct event event;
 	int16_t histo [HIST_SIZE];
-	int retval;
+	int retval, serviced;
 
 	UNUSED(argc);
 	UNUSED(argv);
@@ -126,7 +126,8 @@ int main(int argc, char * argv[]) {
 	context   = zmq_ctx_new();
 	requester = zmq_socket(context, ZMQ_REQ);
 
-	if ( zmq_connect(requester, "tcp://127.0.0.1:5555") ) {
+  sprintf(buffer, "tcp://%s:5555", ADDRESS);
+	if ( zmq_connect(requester, buffer) ) {
 	  PRINT_STD_LIBERROR("zmq_connect");
 	  CleanExit(EXIT_FAILURE);
 	}
@@ -142,15 +143,30 @@ int main(int argc, char * argv[]) {
 		CleanExit(EXIT_FAILURE);
 	}
 
+  serviced = 0
 	while (daq_go) {
-	  // Request data one byte at a time
+	  // Request data one event at a time
 	  retval = zmq_txrx("R", buffer, BUF_SIZE);
 	  if (retval == -1) {
 	 	  PRINT_DBGMSG("Error receiving data");
 			continue;
 		}
+		#ifdef TEST_CLIENT
+		// Print the lorem ipsum text on the screen
 		printf("%s", buffer);
 		getc(stdin);
+		#else
+		// Populate the histogram
+		memcpy(event, buffer, sizeof (struct event));
+		
+		if ( 0 <= event.value && event.value < HIST_SIZE) {
+	    ++histo[event.value];
+	  }
+	  
+	  if ((++serviced % 100) == 99) { // Plot every 100 events
+	    GNUPlot_Plot(gnuplot, histo, HIST_SIZE);		  
+	  }
+		#endif
 	}
 
 	// Stop the acquisition

@@ -1,5 +1,7 @@
 CC = gcc
-CFLAGS = -DTEST_SERVER -I. -lzmq
+#CFLAGS = -DTEST_SERVER -I. -lzmq
+CFLAGS = -I. -lzmq
+
 
 DEPS = utility.h
 

@@ -89,12 +89,11 @@ int main(int argc, char * argv[]) {
 		PRINT_STD_LIBERROR("signal");
 		CleanExit(EXIT_FAILURE);
 	}
-	
 	// Open the char device
 	fd = open(DEV_PATH, O_RDWR, 0);
 	if (fd == -1) {
 	  PRINT_STD_LIBERROR("open");
-	  CleanExit(EXIT_FAILURE);	  
+	  CleanExit(EXIT_FAILURE);
 	}
 	
 	// Configure the ZMQ socket
