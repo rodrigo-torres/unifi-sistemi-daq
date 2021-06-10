@@ -45,7 +45,7 @@
 #ifdef TEST_CLIENT
 #define ADDRESS "127.0.0.1"
 #else
-#define ADDRESS "10.0.42.22"
+#define ADDRESS "10.42.0.22"
 #endif
 
 //! \brief struct event defines the data for each SILENA ADC event
@@ -199,7 +199,7 @@ int zmq_txrx(char const * request, char * reply, int size) {
 	  return -1;
 	}
   buffer[retval] = '\0';
-	printf("zmq_txrx: received '%s'\n", buffer);
+	printf("zmq_txrx: received '%.3s'\n", buffer);
 
 	// Check response for format and reported errors
 	switch ( (bool)strncmp(buffer, "OK", 2) |
